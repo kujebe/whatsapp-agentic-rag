@@ -1,0 +1,1338 @@
+{
+  "name": "OgaBassey WhatsApp Hybrid Workflow",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Webhook Ingest",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-inbound",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "webhookId": "ogabassey-inbound-v1"
+    },
+    {
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Normalize Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "field-tenant",
+              "name": "tenantId",
+              "value": "={{ $json.body?.tenantId || $json.tenantId || $json.TENANT_ID || \"ogabassey\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-jid",
+              "name": "senderJid",
+              "value": "={{ $json.body?.senderJid || $json.body?.sender || $json.senderJid || $json.sender || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-name",
+              "name": "pushName",
+              "value": "={{ $json.body?.pushName || $json.pushName || \"Customer\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-body",
+              "name": "body",
+              "value": "={{ $json.body?.stitchedText || $json.body?.text || ($json.body?.messages || [{}])[0]?.body || ($json.body?.messages || [{}])[0]?.text || $json.stitchedText || $json.text || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-media",
+              "name": "media",
+              "value": "={{ $json.body?.mediaItems?.[0] || $json.body?.media || $json.mediaItems?.[0] || $json.media || null }}",
+              "type": "object"
+            },
+            {
+              "id": "field-ts",
+              "name": "receivedAt",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Has Media?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        710,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-media",
+              "leftValue": "={{ $json.media }}",
+              "rightValue": null,
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "HTTP Vision Whisper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        940,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MODAL_VISION_URL || $env.MODAL_WHISPER_URL || 'http://localhost:1' }}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file_path",
+              "value": "={{ $json.media?.localPath || '' }}"
+            },
+            {
+              "name": "media_type",
+              "value": "={{ $json.media?.mediaType || 'image' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "retry": {
+            "enabled": false
+          },
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Merge Extracted Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1170,
+        160
+      ],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "field-extracted",
+              "name": "body",
+              "value": "={{ $json.text || $json.transcript || $json.description || $json.body || '[media received]' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "include": "selectedInputColumns",
+        "includeFields": "tenantId, senderJid, pushName, media, receivedAt",
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Redis Get Handoff",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        300
+      ],
+      "parameters": {
+        "operation": "get",
+        "propertyName": "handoffFlag",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':handoff:' + $json.senderJid }}"
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Handoff Active?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1630,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-handoff",
+              "leftValue": "={{ $json.handoffFlag }}",
+              "rightValue": "1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Code Handoff Holding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1860,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst tenantId = item.tenantId || process.env.TENANT_ID || 'ogabassey';\n\nfunction getClientConfig(tenantId) {\n  const fs = require('fs');\n  const candidatePaths = [\n    process.env.TENANT_CONFIG_PATH,\n    `/data/clients/${tenantId}/data/config.json`,\n    `/data/clients/${tenantId}/config.json`,\n    `./clients/${tenantId}/data/config.json`\n  ].filter(Boolean);\n\n  let cfg = {\n    tenantId: tenantId,\n    brandName: 'Our Team',\n    supportPhone: '+2348146978921',\n    businessHours: 'Mon–Sat 9am–6pm',\n    salesRepJid: process.env.SALES_REP_JID || '2347014278724@s.whatsapp.net',\n    websiteUrl: 'https://ogabassey.com',\n    currencySymbol: '₦'\n  };\n\n  for (const p of candidatePaths) {\n    try {\n      if (fs.existsSync(p)) {\n        const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));\n        cfg = { ...cfg, ...parsed };\n        break;\n      }\n    } catch (e) {}\n  }\n  return cfg;\n}\n\nconst cfg = getClientConfig(tenantId);\nconst replyText = `⏳ Your chat has been routed to ${cfg.brandName} sales team.\\n\\nA representative will reply here shortly.\\n\\n📞 Urgent? Call ${cfg.supportPhone} (${cfg.businessHours}).`;\n\nreturn [{ json: { ...item, replyText, branch: 'handoff_holding' } }];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Redis Get Swap Step",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1860,
+        380
+      ],
+      "parameters": {
+        "operation": "get",
+        "propertyName": "swapStep",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':swap:' + $json.senderJid + ':step' }}"
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0010-4000-8000-000000000010",
+      "name": "Redis Get Swap Data",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2090,
+        380
+      ],
+      "parameters": {
+        "operation": "get",
+        "propertyName": "swapData",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':swap:' + $json.senderJid + ':data' }}"
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0011-4000-8000-000000000011",
+      "name": "Code Classifier",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        380
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst body = (item.body || '').toLowerCase().trim();\nconst rawStep = item.swapStep;\nconst swapStep = (rawStep !== null && rawStep !== undefined && rawStep !== '') ? parseInt(rawStep, 10) : null;\n\nif (swapStep !== null && !isNaN(swapStep)) {\n  return [{ json: { ...item, branchIndex: 1, swapStep, inSwapSession: true } }];\n}\n\nconst priceRegex = /(?:how\\s*much|price|cost|how\\s*much\\s+is|what.*(?:cost|price)|how\\s*much.*for|price.*of)/i;\nconst deviceRegex = /(?:iphone|samsung|galaxy|pixel|redmi|redmi\\s+note|infinix|tecno|itel|oppo|honor|macbook|imac|mac\\s+mini|mac\\s+studio|ipad|airpods|watch\\s+ultra|watch\\s+se)\\s*\\d/i;\nconst deviceNameRegex = /(?:iphone|samsung|galaxy|pixel|redmi|infinix|tecno|itel|oppo|honor|macbook|imac|mac\\s+mini|mac\\s+studio|ipad)\\s+(?:air|duo|se|mini|pro|ultra|fold|flip|note|\\d{1,2})/i;\n\nif (priceRegex.test(body) || deviceRegex.test(body) || deviceNameRegex.test(body)) {\n  return [{ json: { ...item, branchIndex: 0, swapStep: null, inSwapSession: false } }];\n}\n\nif (/(?:swap|trade.?in|trade in|exchange|my\\s+(?:old|current|used)\\s+phone|sell\\s+my\\s+(?:phone|iphone|samsung)|want\\s+to\\s+swap|looking\\s+to\\s+swap)/i.test(body)) {\n  return [{ json: { ...item, branchIndex: 1, swapStep: 0, inSwapSession: false } }];\n}\n\nif (/(?:address|location|where.*(?:shop|store|office|buy|find you)|map|direction|google\\s+map|open|clos(?:e|ed|ing)|hour|work\\s+hour|office\\s+hour|deliver|shipping|logistics|how\\s+long|when.*arrive|track|pickup|pick.?up|warranty|guarantee|return|refund)/i.test(body)) {\n  return [{ json: { ...item, branchIndex: 2, swapStep: null, inSwapSession: false } }];\n}\n\nif (/(?:speak\\s+to|talk\\s+to|connect\\s+me|human|agent|representative|sales\\s+rep|rep|complaint|angry|problem|issue|not\\s+working|broken|damaged|urgent|help\\s+me|need\\s+help|support)/i.test(body)) {\n  return [{ json: { ...item, branchIndex: 3, swapStep: null, inSwapSession: false } }];\n}\n\nreturn [{ json: { ...item, branchIndex: 4, swapStep: null, inSwapSession: false } }];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0012-4000-8000-000000000012",
+      "name": "Switch Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        2550,
+        380
+      ],
+      "parameters": {
+        "mode": "expression",
+        "output": "={{ $json.branchIndex }}",
+        "options": {},
+        "numberOutputs": 5
+      }
+    },
+    {
+      "id": "a1b2c3d4-0013-4000-8000-000000000013",
+      "name": "Code Price Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2780,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst fs = require('fs');\nconst tenantId = item.tenantId || process.env.TENANT_ID || 'ogabassey';\n\nfunction getClientConfig(tenantId) {\n  const fs = require('fs');\n  const candidatePaths = [\n    process.env.TENANT_CONFIG_PATH,\n    `/data/clients/${tenantId}/data/config.json`,\n    `/data/clients/${tenantId}/config.json`,\n    `./clients/${tenantId}/data/config.json`\n  ].filter(Boolean);\n\n  let cfg = {\n    tenantId: tenantId,\n    brandName: 'Our Team',\n    supportPhone: '+2348146978921',\n    businessHours: 'Mon–Sat 9am–6pm',\n    salesRepJid: process.env.SALES_REP_JID || '2347014278724@s.whatsapp.net',\n    websiteUrl: 'https://ogabassey.com',\n    currencySymbol: '₦'\n  };\n\n  for (const p of candidatePaths) {\n    try {\n      if (fs.existsSync(p)) {\n        const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));\n        cfg = { ...cfg, ...parsed };\n        break;\n      }\n    } catch (e) {}\n  }\n  return cfg;\n}\n\nconst cfg = getClientConfig(tenantId);\n\nconst candidatePaths = [\n  process.env.TENANT_CATALOG_PATH,\n  `/data/clients/${tenantId}/data/catalog.json`,\n  `/data/clients/${tenantId}/catalog.json`,\n  `./clients/${tenantId}/data/catalog.json`\n].filter(Boolean);\n\nlet catalog = null;\nfor (const p of candidatePaths) {\n  try {\n    if (fs.existsSync(p)) {\n      catalog = JSON.parse(fs.readFileSync(p, 'utf8'));\n      break;\n    }\n  } catch (e) {}\n}\n\nif (!catalog || !Array.isArray(catalog.products)) {\n  return [{ json: { ...item, replyText: `⚠️ Product catalog is temporarily unavailable. Please visit ${cfg.websiteUrl} or call ${cfg.supportPhone} for live prices.`, branch: 'price_error' } }];\n}\n\nconst body = (item.body || '').toLowerCase().trim();\n\nfunction escapeRegex(str) {\n  return str.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n}\n\nconst scored = [];\nfor (const p of catalog.products) {\n  let score = 0;\n  const pName = (p.name || '').toLowerCase();\n  const pSku = (p.sku || '').replace(/-/g, ' ').toLowerCase();\n\n  if (body.includes(pName)) score = Math.max(score, pName.length * 10);\n  if (body.includes(pSku)) score = Math.max(score, pSku.length * 8);\n\n  if (Array.isArray(p.aliases)) {\n    for (const alias of p.aliases) {\n      if (!alias || alias.length < 3) continue;\n      const esc = escapeRegex(alias.toLowerCase());\n      const regex = new RegExp('(?:^|[^a-z0-9])' + esc + '(?:$|[^a-z0-9])', 'i');\n      if (regex.test(body)) {\n        score = Math.max(score, alias.length * 5);\n      }\n    }\n  }\n\n  if (score > 0) scored.push({ product: p, score });\n}\n\nscored.sort((a, b) => b.score - a.score);\nconst matches = scored.map(s => s.product);\n\nlet replyText;\nconst curr = cfg.currencySymbol || '₦';\nif (matches.length === 0) {\n  return [{ json: { ...item, branchIndex: 4, branch: 'price_no_match_llm_escalation' } }];\n} else if (matches.length === 1 || scored[0].score >= (scored[1]?.score || 0) * 1.5) {\n  const p = matches[0];\n  const warrantyText = p.warranty || (p.condition === 'New' ? 'Manufacturer warranty' : `1 year ${cfg.brandName} store warranty`);\n  const priceVal = p.price_ngn || p.price || 0;\n  const price = Number(priceVal).toLocaleString('en-NG');\n  const priceSuffix = p.price_ngn_max ? ` – ${curr}${Number(p.price_ngn_max).toLocaleString('en-NG')}` : '';\n  const storageNote = (p.storage_variants && p.storage_variants.length > 1) ? `\\n💾 Available: ${p.storage_variants.join(', ')}` : '';\n  replyText = `📱 *${p.name}*\\n\\n💰 *Price:* ${curr}${price}${priceSuffix}\\n✨ *Condition:* ${p.condition || 'Used'}${storageNote}\\n🛡️ *Warranty:* ${warrantyText}\\n🔗 ${p.url || cfg.websiteUrl}\\n\\n_Reply \"swap\" to trade in your current device, or type your location for delivery details!_`;\n} else {\n  const list = matches.slice(0, 4).map(p => `• *${p.name}* (${p.condition || 'Used'}) — ${curr}${Number(p.price_ngn || p.price || 0).toLocaleString('en-NG')}`).join('\\n');\n  replyText = `🔎 Found multiple matching options:\\n\\n${list}\\n\\n_Which specific storage or condition would you like details on?_`;\n}\n\nreturn [{ json: { ...item, replyText, branch: 'price_check' } }];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0014-4000-8000-000000000014",
+      "name": "Code Swap Intake",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2780,
+        280
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst fs = require('fs');\nconst step = (item.swapStep !== null && item.swapStep !== undefined && item.swapStep !== '') ? parseInt(item.swapStep, 10) : 0;\nlet storedData = {};\ntry {\n  storedData = item.swapData ? (typeof item.swapData === 'string' ? JSON.parse(item.swapData) : item.swapData) : {};\n} catch (e) {}\n\nconst body = (item.body || '').trim();\nconst tenantId = item.tenantId || process.env.TENANT_ID || 'ogabassey';\nconst senderJid = item.senderJid;\n\nfunction getClientConfig(tenantId) {\n  const fs = require('fs');\n  const candidatePaths = [\n    process.env.TENANT_CONFIG_PATH,\n    `/data/clients/${tenantId}/data/config.json`,\n    `/data/clients/${tenantId}/config.json`,\n    `./clients/${tenantId}/data/config.json`\n  ].filter(Boolean);\n\n  let cfg = {\n    tenantId: tenantId,\n    brandName: 'Our Team',\n    supportPhone: '+2348146978921',\n    businessHours: 'Mon–Sat 9am–6pm',\n    salesRepJid: process.env.SALES_REP_JID || '2347014278724@s.whatsapp.net',\n    websiteUrl: 'https://ogabassey.com',\n    currencySymbol: '₦'\n  };\n\n  for (const p of candidatePaths) {\n    try {\n      if (fs.existsSync(p)) {\n        const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));\n        cfg = { ...cfg, ...parsed };\n        break;\n      }\n    } catch (e) {}\n  }\n  return cfg;\n}\n\nconst cfg = getClientConfig(tenantId);\n\nlet replyText, nextStep, newData, alertRep = false, alertText = null, swapComplete = false;\n\nswitch (step) {\n  case 0:\n    replyText = `🔄 *${cfg.brandName} Swap & Trade-In Service*\\n\\nLet's get your trade-in estimate! Step 1 of 4:\\n\\n📱 *What is the exact model of your current phone?* (e.g. iPhone 13 128GB or Samsung S22 Ultra)`;\n    nextStep = 1;\n    newData = {};\n    break;\n  case 1:\n    newData = { ...storedData, model: body };\n    replyText = `✅ Current device: *${body}*\\n\\nStep 2 of 4:\\n💾 *What is the storage capacity?* (e.g. 64GB, 128GB, 256GB, 512GB)`;\n    nextStep = 2;\n    break;\n  case 2:\n    newData = { ...storedData, storage: body };\n    replyText = `✅ Storage: *${body}*\\n\\nStep 3 of 4:\\n🔋 *What is the battery health % and physical condition?* (e.g. 85%, clean screen, no cracks)`;\n    nextStep = 3;\n    break;\n  case 3:\n    newData = { ...storedData, batteryHealth: body };\n    replyText = `✅ Condition noted!\\n\\nStep 4 of 4:\\n🎯 *Which phone or device do you want to swap TO?* (e.g. iPhone 15 Pro 128GB)`;\n    nextStep = 4;\n    break;\n  case 4: {\n    newData = { ...storedData, targetModel: body };\n    swapComplete = true;\n    nextStep = null;\n    alertRep = true;\n\n    const candidatePaths = [\n      process.env.TENANT_CATALOG_PATH,\n      `/data/clients/${tenantId}/data/catalog.json`,\n      `/data/clients/${tenantId}/catalog.json`\n    ].filter(Boolean);\n\n    let targetInfo = '';\n    let targetUrl = cfg.websiteUrl;\n    for (const p of candidatePaths) {\n      try {\n        if (fs.existsSync(p)) {\n          const catalog = JSON.parse(fs.readFileSync(p, 'utf8'));\n          const targetBody = body.toLowerCase();\n          const hit = catalog.products.find(prod =>\n            (prod.aliases && prod.aliases.some(a => targetBody.includes(a.toLowerCase()))) ||\n            targetBody.includes(prod.name.toLowerCase()) ||\n            targetBody.includes((prod.sku || '').replace(/-/g, ' ').toLowerCase())\n          );\n          if (hit) {\n            const curr = cfg.currencySymbol || '₦';\n            const priceVal = hit.price_ngn || hit.price || 0;\n            targetInfo = `\\n🎯 Target device retail: ${curr}${Number(priceVal).toLocaleString('en-NG')} (${hit.condition || 'Used'})`;\n            targetUrl = hit.url || targetUrl;\n          }}\n          break;\n        }\n      } catch (e) {}\n    }\n\n    replyText = `🎉 *Swap Valuation Request Received!*\\n\\n📋 *Your Trade-in Summary:*\\n• Current Device: *${newData.model}* (${newData.storage || 'N/A'})\\n• Battery/Condition: *${newData.batteryHealth}*\\n• Target Upgrade: *${newData.targetModel}*${targetInfo}\\n\\n📍 Our technicians will inspect your device and calculate your exact balance top-up.\\n\\n👨‍💼 A sales representative from ${cfg.brandName} has been alerted and will follow up here shortly!`;\n    alertText = `🚨 *NEW SWAP VALUATION REQUEST*\\n\\nCustomer: ${item.pushName || 'Customer'} (${senderJid})\\n• Trade-in: ${newData.model} ${newData.storage || ''}\\n• Condition: ${newData.batteryHealth}\\n• Desired Upgrade: ${newData.targetModel}\\n\\nPlease review and attend to this customer.`;\n    break;\n  }\n  default:\n    replyText = `🔄 Let's start your swap estimate:\\n\\n📱 *What is the exact model of your current phone?*`;\n    nextStep = 1;\n    newData = {};\n}\n\nreturn [{\n  json: {\n    ...item,\n    replyText,\n    nextStep: nextStep === null ? null : String(nextStep),\n    swapDataOut: JSON.stringify(newData),\n    alertRep,\n    alertText,\n    repJid: cfg.salesRepJid,\n    swapComplete,\n    branch: 'swap_intake'\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0015-4000-8000-000000000015",
+      "name": "Code Store Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2780,
+        460
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst body = (item.body || '').toLowerCase();\n\n// Inline store data - no fs required\nconst faq = {\n  store: {\n    name: 'OgaBassey Official Store',\n    address: '2 Olaide Tomori Street, Ikeja, Lagos, 100001',\n    phone: '+2348146978921',\n    email: 'basseybjohn@yahoo.co.uk',\n    hours: 'Monday to Saturday, 9am to 6pm',\n    closed_days: 'Sundays and public holidays',\n    map_link: 'https://www.google.com/maps/search/?api=1&query=2%20Olaide%20Tomori%20Street%2C%20Ikeja%2C%20Lagos%2C%20100001',\n    website: 'https://ogabassey.com',\n    instagram: 'https://instagram.com/ogabasseyy'\n  },\n  shipping: {\n    courier: 'GIG Logistics',\n    regions: 'Nigeria (all states)',\n    handling_days: '0 to 2 business days',\n    transit_days: '1 to 7 business days',\n    fee_note: 'Shipping is not free. Delivery fee is calculated at checkout based on destination.',\n    total_estimate: '1 to 9 business days from order to delivery'\n  },\n  warranty: {\n    new_devices: 'Manufacturer warranty applies.',\n    used_and_open_box_devices: '1 year OgaBassey store warranty on eligible pre-owned and open-box devices.',\n    covered_faults: 'Device stops turning on, camera stops working, and other electronic defects not caused by user.',\n    exclusions: 'Screen damage, physical damage, liquid damage, and power surge damage are excluded.'\n  },\n  returns: {\n    window_days: 14,\n    policy: 'Report an undisclosed technical defect within 14 days of delivery.',\n    remedy: 'OgaBassey will complete a repair or replacement within the 14-day period for eligible faults.',\n    buyback: 'If you change your mind and the device has no fault, ask support about a buyback. Buyback price is the original device value minus 15 to 20 percent.'\n  },\n  payments: {\n    processor: 'Paystack',\n    accepted_methods: 'Card payments via Paystack checkout on ogabassey.com',\n    currency: 'Nigerian Naira (₦)'\n  },\n  imei_check: { url: 'https://ogabassey.com/imei-check' },\n  repairs: { url: 'https://ogabassey.com/repairs' }\n};\n\nconst s = faq.store;\nlet replyText;\n\nif (/track|order.*status|where.*order/.test(body)) {\n  replyText = `📦 *Track Your Order*\\n\\nVisit: https://ogabassey.com/track-order\\nEnter your order number to get real-time delivery status.\\n\\nNeed help? Call ${s.phone} or reply *human*.`;\n} else if (/warranty|guarantee/.test(body)) {\n  const w2 = faq.warranty;\n  replyText = `🛡️ *OgaBassey Warranty*\\n\\n📱 New devices: ${w2.new_devices}\\n🔄 Pre-owned/Open-box: ${w2.used_and_open_box_devices}\\n\\n✅ Covered: ${w2.covered_faults}\\n❌ Excluded: ${w2.exclusions}\\n\\nTo claim warranty, contact: ${s.phone}`;\n} else if (/return|refund/.test(body)) {\n  const r = faq.returns;\n  replyText = `↩️ *Returns & Refunds*\\n\\nWindow: ${r.window_days} days from delivery\\n${r.policy}\\n${r.remedy}\\n\\nBuyback: ${r.buyback}\\n\\nContact us first at ${s.phone} before returning.`;\n} else if (/pay|payment|paystack|card|installment|plan/.test(body)) {\n  const p = faq.payments;\n  replyText = `💳 *Payment Options*\\n\\n${p.accepted_methods}\\nCurrency: ${p.currency}\\n\\nFor installment enquiries, call: ${s.phone}`;\n} else if (/imei|blacklist|lock|check/.test(body)) {\n  replyText = `🔍 *IMEI Check*\\n\\nCheck if a device is blacklisted or locked:\\n${faq.imei_check.url}\\n\\nAlways check before buying a used device!`;\n} else if (/repair/.test(body)) {\n  replyText = `🔧 *Repairs*\\n\\nOgaBassey offers device repair services.\\nBook at: ${faq.repairs.url}\\nOr call: ${s.phone}`;\n} else if (/ship|deliver|logistics|how.*long|when.*arriv/.test(body)) {\n  const sh = faq.shipping;\n  replyText = `🚚 *Shipping & Delivery*\\n\\nCourier: ${sh.courier}\\nRegions: ${sh.regions}\\nHandling: ${sh.handling_days}\\nTransit: ${sh.transit_days}\\n${sh.fee_note}\\n\\nEstimated total: ${sh.total_estimate}`;\n} else {\n  replyText = `📍 *OgaBassey Store Info*\\n\\n🏪 ${s.name}\\n📍 ${s.address}\\n📞 ${s.phone}\\n🕐 ${s.hours}\\n🚫 Closed: ${s.closed_days}\\n🗺️ Directions: ${s.map_link}\\n🌐 ${s.website}\\n📸 Instagram: ${s.instagram}`;\n}\n\nreturn [{ json: { ...item, replyText, branch: 'store_info' } }];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0016-4000-8000-000000000016",
+      "name": "Code Human Handoff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2780,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst tenantId = item.tenantId || process.env.TENANT_ID || 'ogabassey';\n\nfunction getClientConfig(tenantId) {\n  const fs = require('fs');\n  const candidatePaths = [\n    process.env.TENANT_CONFIG_PATH,\n    `/data/clients/${tenantId}/data/config.json`,\n    `/data/clients/${tenantId}/config.json`,\n    `./clients/${tenantId}/data/config.json`\n  ].filter(Boolean);\n\n  let cfg = {\n    tenantId: tenantId,\n    brandName: 'Our Team',\n    supportPhone: '+2348146978921',\n    businessHours: 'Mon–Sat 9am–6pm',\n    salesRepJid: process.env.SALES_REP_JID || '2347014278724@s.whatsapp.net',\n    websiteUrl: 'https://ogabassey.com',\n    currencySymbol: '₦'\n  };\n\n  for (const p of candidatePaths) {\n    try {\n      if (fs.existsSync(p)) {\n        const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));\n        cfg = { ...cfg, ...parsed };\n        break;\n      }\n    } catch (e) {}\n  }\n  return cfg;\n}\n\nconst cfg = getClientConfig(tenantId);\nconst now = new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour12: true });\n\nconst customerReply = `👨‍💼 *Connecting You with a Sales Representative*\\n\\nI have notified the ${cfg.brandName} sales team. A representative will attend to your chat shortly.\\n\\n🕒 *Hours:* ${cfg.businessHours}\\n📞 *Direct line:* ${cfg.supportPhone}\\n\\n_Thank you for your patience!_`;\n\nconst repAlert = `🚨 *HUMAN REP ESCALATION REQUIRED*\\n\\n• Tenant: ${cfg.brandName} (${tenantId})\\n• Customer: ${item.pushName || 'Customer'} (${item.senderJid || 'Unknown JID'})\\n• Time: ${now}\\n• Last Message: \"${item.body || ''}\"\\n\\nPlease reply directly to this customer on WhatsApp.`;\n\nreturn [{\n  json: {\n    ...item,\n    replyText: customerReply,\n    repAlertText: repAlert,\n    repJid: cfg.salesRepJid,\n    branch: 'human_handoff',\n    handoffJid: item.senderJid,\n    tenantId\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0017-4000-8000-000000000017",
+      "name": "HTTP LLM RAG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2780,
+        820
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.LLM_BASE_URL || 'http://localhost:1') + '/chat/completions' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LLM_API_KEY || 'placeholder' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "={{ $env.LLM_MODEL || 'Qwen/Qwen2.5-7B-Instruct' }}"
+            },
+            {
+              "name": "messages",
+              "value": "={{ JSON.stringify([{role:'system',content:$env.TENANT_SYSTEM_PROMPT||'You are a helpful sales assistant for an online gadget store in Nigeria. Answer questions about products, prices, and services. Be concise and friendly.'},{role:'user',content:$json.body||''}]) }}"
+            },
+            {
+              "name": "max_tokens",
+              "value": "300"
+            },
+            {
+              "name": "temperature",
+              "value": "0.3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 4000,
+          "retry": {
+            "enabled": false
+          }
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0018-4000-8000-000000000018",
+      "name": "Code Parse LLM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3010,
+        820
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst tenantId = item.tenantId || process.env.TENANT_ID || 'ogabassey';\n\nfunction getClientConfig(tenantId) {\n  const fs = require('fs');\n  const candidatePaths = [\n    process.env.TENANT_CONFIG_PATH,\n    `/data/clients/${tenantId}/data/config.json`,\n    `/data/clients/${tenantId}/config.json`,\n    `./clients/${tenantId}/data/config.json`\n  ].filter(Boolean);\n\n  let cfg = {\n    tenantId: tenantId,\n    brandName: 'Our Team',\n    supportPhone: '+2348146978921',\n    businessHours: 'Mon–Sat 9am–6pm',\n    salesRepJid: process.env.SALES_REP_JID || '2347014278724@s.whatsapp.net',\n    websiteUrl: 'https://ogabassey.com',\n    currencySymbol: '₦'\n  };\n\n  for (const p of candidatePaths) {\n    try {\n      if (fs.existsSync(p)) {\n        const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));\n        cfg = { ...cfg, ...parsed };\n        break;\n      }\n    } catch (e) {}\n  }\n  return cfg;\n}\n\nconst cfg = getClientConfig(tenantId);\n\nlet replyText;\ntry {\n  const llmResp = item;\n  if (llmResp && llmResp.choices && llmResp.choices[0] && llmResp.choices[0].message) {\n    replyText = llmResp.choices[0].message.content.trim();\n  } else if (llmResp && llmResp.error) {\n    throw new Error('LLM error: ' + (llmResp.error.message || JSON.stringify(llmResp.error)));\n  } else {\n    throw new Error('Unexpected LLM response shape');\n  }\n} catch (e) {\n  replyText = `Hello! How can we assist you at ${cfg.brandName} today?\\n\\n• For device prices, reply with the model (e.g. \"iPhone 15 Pro price\")\\n• For trade-ins, reply \"swap\"\\n• For office address or delivery, reply \"location\"\\n• Or reply \"human\" to speak with a sales rep!`;\n}\nreturn [{ json: { ...item, replyText, branch: 'llm_rag' } }];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0019-4000-8000-000000000019",
+      "name": "If Swap Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3010,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-swap-done",
+              "leftValue": "={{ $json.swapComplete }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0020-4000-8000-000000000020",
+      "name": "Redis Del Swap Step",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        3240,
+        200
+      ],
+      "parameters": {
+        "operation": "delete",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':swap:' + $json.senderJid + ':step' }}"
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0021-4000-8000-000000000021",
+      "name": "Redis Del Swap Data",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        3470,
+        200
+      ],
+      "parameters": {
+        "operation": "delete",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':swap:' + $json.senderJid + ':data' }}"
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0022-4000-8000-000000000022",
+      "name": "Redis Set Swap Step",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        3240,
+        380
+      ],
+      "parameters": {
+        "operation": "set",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':swap:' + $json.senderJid + ':step' }}",
+        "value": "={{ $json.nextStep }}",
+        "keyType": "automatic",
+        "expire": true,
+        "ttl": 3600
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0023-4000-8000-000000000023",
+      "name": "Redis Set Swap Data",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        3470,
+        380
+      ],
+      "parameters": {
+        "operation": "set",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':swap:' + $json.senderJid + ':data' }}",
+        "value": "={{ $json.swapDataOut }}",
+        "keyType": "automatic",
+        "expire": true,
+        "ttl": 3600
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0024-4000-8000-000000000024",
+      "name": "Redis Set Handoff",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        3010,
+        640
+      ],
+      "parameters": {
+        "operation": "set",
+        "key": "={{ 'whatsapp:' + $json.tenantId + ':handoff:' + $json.senderJid }}",
+        "value": "1",
+        "keyType": "automatic",
+        "expire": true,
+        "ttl": 86400
+      },
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis OgaBassey"
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0025-4000-8000-000000000025",
+      "name": "HTTP Send Customer Holding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3700,
+        160
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.senderJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.replyText }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0026-4000-8000-000000000026",
+      "name": "HTTP Send Customer Price",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3010,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.senderJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.replyText }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0027-4000-8000-000000000027",
+      "name": "HTTP Send Customer Swap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3700,
+        380
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.senderJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.replyText }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0028-4000-8000-000000000028",
+      "name": "HTTP Alert Rep Swap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3700,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $env.SALES_REP_JID }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.alertText }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0029-4000-8000-000000000029",
+      "name": "HTTP Send Customer Store",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3010,
+        460
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.senderJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.replyText }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0030-4000-8000-000000000030",
+      "name": "HTTP Alert Rep Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3240,
+        640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": [
+          {
+            "name": "to",
+            "value": "={{ $env.SALES_REP_JID }}"
+          },
+          {
+            "name": "text",
+            "value": "={{ $json.repAlertText }}"
+          },
+          {
+            "name": "tenantId",
+            "value": "={{ $json.tenantId }}"
+          }
+        ],
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0031-4000-8000-000000000031",
+      "name": "HTTP Send Customer Handoff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3470,
+        640
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.senderJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.replyText }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0032-4000-8000-000000000032",
+      "name": "HTTP Send Customer LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3240,
+        820
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.senderJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.replyText }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "a1b2c3d4-0033-4000-8000-000000000033",
+      "name": "EOD Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        250,
+        700
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "={{ $env.EOD_CRON_WAT || '0 19 * * 1-6' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0034-4000-8000-000000000034",
+      "name": "Code Build EOD Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        700
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.first()?.json || {};\nconst tenantId = item.tenantId || process.env.TENANT_ID || 'ogabassey';\n\nfunction getClientConfig(tenantId) {\n  const fs = require('fs');\n  const candidatePaths = [\n    process.env.TENANT_CONFIG_PATH,\n    `/data/clients/${tenantId}/data/config.json`,\n    `/data/clients/${tenantId}/config.json`,\n    `./clients/${tenantId}/data/config.json`\n  ].filter(Boolean);\n\n  let cfg = {\n    tenantId: tenantId,\n    brandName: 'Our Team',\n    supportPhone: '+2348146978921',\n    businessHours: 'Mon–Sat 9am–6pm',\n    salesRepJid: process.env.SALES_REP_JID || '2347014278724@s.whatsapp.net',\n    websiteUrl: 'https://ogabassey.com',\n    currencySymbol: '₦'\n  };\n\n  for (const p of candidatePaths) {\n    try {\n      if (fs.existsSync(p)) {\n        const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));\n        cfg = { ...cfg, ...parsed };\n        break;\n      }\n    } catch (e) {}\n  }\n  return cfg;\n}\n\nconst cfg = getClientConfig(tenantId);\n\nconst now = new Date().toLocaleString('en-NG', {\n  timeZone: 'Africa/Lagos',\n  weekday: 'long',\n  year: 'numeric',\n  month: 'long',\n  day: 'numeric',\n  hour: '2-digit',\n  minute: '2-digit',\n  hour12: true\n});\n\nconst eodMessage = `📊 *${cfg.brandName} End-of-Day Operations Summary*\\n\\n📅 Date: ${now}\\n🏢 Tenant: ${tenantId.toUpperCase()}\\n\\n✅ Automated WhatsApp Assistant status: Online & Healthy\\n📋 Daily intake queues processed.\\n\\nHave a great evening!`;\n\nreturn [{ json: { ...item, tenantId, repJid: cfg.salesRepJid, eodMessage } }];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0035-4000-8000-000000000035",
+      "name": "HTTP EOD Send to Rep",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        710,
+        700
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://baileys:3000/send",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "keypairs",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $env.SALES_REP_JID }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.eodMessage }}"
+            },
+            {
+              "name": "tenantId",
+              "value": "={{ $json.tenantId }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook Ingest": {
+      "main": [
+        [
+          {
+            "node": "Normalize Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Payload": {
+      "main": [
+        [
+          {
+            "node": "Has Media?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Media?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Vision Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis Get Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Vision Whisper": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Extracted Text": {
+      "main": [
+        [
+          {
+            "node": "Redis Get Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Get Handoff": {
+      "main": [
+        [
+          {
+            "node": "Handoff Active?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handoff Active?": {
+      "main": [
+        [
+          {
+            "node": "Code Handoff Holding",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis Get Swap Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Handoff Holding": {
+      "main": [
+        [
+          {
+            "node": "HTTP Send Customer Holding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Get Swap Step": {
+      "main": [
+        [
+          {
+            "node": "Redis Get Swap Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Get Swap Data": {
+      "main": [
+        [
+          {
+            "node": "Code Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Classifier": {
+      "main": [
+        [
+          {
+            "node": "Switch Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Router": {
+      "main": [
+        [
+          {
+            "node": "Code Price Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Swap Intake",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Store Info",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Human Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP LLM RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Price Check": {
+      "main": [
+        [
+          {
+            "node": "HTTP Send Customer Price",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Swap Intake": {
+      "main": [
+        [
+          {
+            "node": "If Swap Complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Swap Complete?": {
+      "main": [
+        [
+          {
+            "node": "Redis Del Swap Step",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis Set Swap Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Del Swap Step": {
+      "main": [
+        [
+          {
+            "node": "Redis Del Swap Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Del Swap Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP Alert Rep Swap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Alert Rep Swap": {
+      "main": [
+        [
+          {
+            "node": "HTTP Send Customer Swap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Set Swap Step": {
+      "main": [
+        [
+          {
+            "node": "Redis Set Swap Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Set Swap Data": {
+      "main": [
+        [
+          {
+            "node": "HTTP Send Customer Swap",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Store Info": {
+      "main": [
+        [
+          {
+            "node": "HTTP Send Customer Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Human Handoff": {
+      "main": [
+        [
+          {
+            "node": "Redis Set Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Set Handoff": {
+      "main": [
+        [
+          {
+            "node": "HTTP Alert Rep Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Alert Rep Handoff": {
+      "main": [
+        [
+          {
+            "node": "HTTP Send Customer Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP LLM RAG": {
+      "main": [
+        [
+          {
+            "node": "Code Parse LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Parse LLM": {
+      "main": [
+        [
+          {
+            "node": "HTTP Send Customer LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EOD Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code Build EOD Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build EOD Summary": {
+      "main": [
+        [
+          {
+            "node": "HTTP EOD Send to Rep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 30,
+    "timezone": "Africa/Lagos"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "ogabassey-layer3-v1"
+  },
+  "tags": [
+    {
+      "id": "tag-whatsapp",
+      "name": "whatsapp"
+    },
+    {
+      "id": "tag-ogabassey",
+      "name": "ogabassey"
+    },
+    {
+      "id": "tag-layer3",
+      "name": "layer3"
+    }
+  ],
+  "id": "ogabassey_hybrid"
+}

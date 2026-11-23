@@ -11,8 +11,9 @@ cd "${WORKSPACE_DIR}"
 
 # Source environment
 if [ -f .env ]; then
-  # shellcheck disable=SC2046
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source .env
+  set +a
 fi
 
 REDIS_PWD="${REDIS_PASSWORD:-}"

@@ -125,39 +125,99 @@ When the debounce window closes, the bridge fires a `POST` to `N8N_WEBHOOK_URL` 
 
 ```json
 {
+  "event": "messages.aggregated",
   "tenantId": "default",
-  "senderJid": "2347012345678@s.whatsapp.net",
+  "sender": "2347012345678@s.whatsapp.net",
+  "phone": "2347012345678",
   "pushName": "John",
-  "timestamp": 1732271234567,
-  "messages": [
-    { "text": "Hello", "media": null },
-    { "text": "Actually can I get a price list", "media": null }
-  ],
-  "media": {
-    "type": "image",
-    "mimeType": "image/jpeg",
-    "localPath": "/app/media/default/ABC123.jpg",
-    "caption": "Is this in stock?"
-  }
+  "messageCount": 2,
+  "stitchedText": "Hello\nActually can I get a price list",
+  "quotedText": "Can I see your catalog?",
+  "quotedContext": {
+    "quotedText": "Can I see your catalog?",
+    "quotedParticipant": "2347012345678@s.whatsapp.net"
+  },
+  "hasMedia": false,
+  "mediaItems": [],
+  "dispatchedAt": 1732271234567
 }
 ```
 
-If n8n returns non-2xx (or is unreachable), the payload goes into a Redis dead-letter queue (`baileys:dlq:{tenantId}`). A background worker retries the DLQ every 30 seconds.
+If n8n returns non-2xx (or is unreachable), the payload goes into a Redis dead-letter queue (`whatsapp:{tenantId}:dlq:messages`). A background worker retries the DLQ every 30 seconds.
 
 ---
 
-## Multi-tenant setup
+## Multi-tenant setup & client provisioning
 
-One instance = one WhatsApp account. To run multiple clients on the same host, copy the stack and change these two variables:
+Each client runs an **isolated stack**: dedicated Redis instance, Baileys session, and n8n runner. Containers, networks, volumes, and ports never collide.
+
+### 1. Provision a new client in one command
 
 ```bash
-COMPOSE_PROJECT_NAME=client_b
-TENANT_ID=client_b
-BAILEYS_HOST_PORT=3001
-N8N_HOST_PORT=5679
+./scripts/create-tenant.sh <tenant_id> <baileys_port> <n8n_port> [brand_name] [sales_rep_jid]
+
+# Example:
+./scripts/create-tenant.sh gadgethub 3001 5679 "Gadget Hub" "2348012345678@s.whatsapp.net"
 ```
 
-All Redis keys, volumes, and container names are namespaced by `COMPOSE_PROJECT_NAME` and `TENANT_ID`. They will not collide.
+This creates `clients/<tenant_id>/` with:
+- `clients/<tenant_id>/data/config.json`: Client identity, phone, hours, and sales rep JID.
+- `clients/<tenant_id>/data/catalog.json`: Starter product inventory.
+- `clients/<tenant_id>/.env`: Project-namespaced environment file with dedicated ports, isolated volumes, and a unique Redis password.
+
+### 2. Client configuration schema (`config.json`)
+
+All workflows dynamically read branding from `clients/<tenant_id>/data/config.json` via `$json.tenantId`:
+
+```json
+{
+  "tenantId": "gadgethub",
+  "brandName": "Gadget Hub",
+  "supportPhone": "+2348012345678",
+  "businessHours": "Monday to Saturday, 9am to 6pm",
+  "salesRepJid": "2348012345678@s.whatsapp.net",
+  "websiteUrl": "https://gadgethub.example.com",
+  "currencySymbol": "₦",
+  "currencyCode": "NGN"
+}
+```
+
+### 3. Start the client's isolated stack
+
+```bash
+docker compose --env-file clients/gadgethub/.env -p whatsapp_gadgethub up -d
+```
+
+### 4. Link WhatsApp for the client
+
+```bash
+docker logs -f whatsapp_gadgethub-baileys
+```
+
+Scan the terminal QR code using WhatsApp on the phone assigned to that client. Session credentials persist in `whatsapp_gadgethub_baileys_auth`.
+
+### 5. Inspecting client database in DB Browser for SQLite
+
+Each client's workflows, credentials, and execution logs are stored in an isolated SQLite database inside their n8n container (`/home/node/.n8n/database.sqlite`).
+
+To view and query a client's data with **DB Browser for SQLite**:
+
+1. **Copy the database to your computer:**
+   ```bash
+   # For default / OgaBassey stack:
+   docker cp whatsapp-n8n:/home/node/.n8n/database.sqlite ./ogabassey.sqlite
+
+   # For a provisioned client (e.g. gadgethub):
+   docker cp whatsapp_gadgethub-n8n:/home/node/.n8n/database.sqlite ./gadgethub.sqlite
+   ```
+
+2. **Open in DB Browser for SQLite:**
+   * Launch **DB Browser for SQLite**.
+   * Click **Open Database** and choose the downloaded file (`ogabassey.sqlite` or `gadgethub.sqlite`).
+   * Primary tables to inspect:
+     * `workflow_entity`: Workflow structure, active nodes, and settings.
+     * `execution_entity`: Webhook payloads, runtime executions, and error states.
+     * `credentials_entity`: Saved credentials (API keys, Redis settings).
 
 ---
 
@@ -199,13 +259,15 @@ curl http://localhost:3000/health/whatsapp
 | Variable | Default | What it does |
 |---|---|---|
 | `COMPOSE_PROJECT_NAME` | `whatsapp` | Namespaces all containers and volumes |
-| `TENANT_ID` | `default` | Namespaces all Redis keys and media paths |
+| `TENANT_ID` | `default` | Namespaces all Redis keys, media paths, and client config |
+| `TENANT_CONFIG_PATH` | `/data/clients/${TENANT_ID}/data/config.json` | Path to client branding, phone, and hours config |
+| `SALES_REP_JID` | — | Sales rep WhatsApp JID for escalations and EOD reports |
 | `REDIS_PASSWORD` | — | Required. No default. |
 | `DEBOUNCE_MS` | `3500` | Trailing-edge buffer window in milliseconds |
 | `LOG_LEVEL` | `info` | Pino log level: `trace`, `debug`, `info`, `warn`, `error` |
 | `BAILEYS_HOST_PORT` | `3000` | Host port for the Baileys HTTP API |
 | `N8N_HOST_PORT` | `5678` | Host port for n8n |
-| `N8N_EXISTING_VOLUME` | `n8n_data` | External Docker volume for n8n data persistence |
+| `N8N_EXISTING_VOLUME` | `${COMPOSE_PROJECT_NAME}_n8n_data` | Isolated Docker volume for n8n data persistence |
 | `N8N_PUBLIC_WEBHOOK_URL` | `http://localhost:5678/` | n8n's externally reachable URL |
 | `GENERIC_TIMEZONE` | `Africa/Lagos` | Timezone for n8n cron nodes |
 
@@ -283,24 +345,29 @@ AOF enabled (`appendonly yes`, `appendfsync everysec`). Session lock keys use `v
 ├── docker-compose.yml
 ├── .env.example
 ├── .gitignore
+├── clients/
+│   ├── ogabassey/             # Production client assets
+│   │   ├── data/              # config.json, catalog.json, faq.json
+│   │   └── workflows/         # Parameterized hybrid workflows
+│   └── template/              # Starter client template
 ├── services/
 │   └── baileys-bridge/
 │       ├── Dockerfile
 │       ├── package.json
 │       └── src/
-│           ├── server.js      # Express API + Baileys socket lifecycle
+│           ├── server.js      # Express API + Baileys socket lifecycle + Quote context
 │           ├── lock.js        # Redis Lua distributed session lock
-│           ├── debounce.js    # Trailing-edge buffer + DLQ + replay worker
+│           ├── debounce.js    # Trailing-edge buffer + DLQ + Quote aggregation
 │           ├── queue.js       # Outbound FIFO queue + anti-ban timing
 │           └── media.js       # Multimodal download + 24h purge
 └── scripts/
+    ├── create-tenant.sh       # One-command client provisioning CLI
+    ├── patch_nodes.py         # Workflow parameterization engine
     ├── test-layer2-pipeline.sh   # 17-test acceptance suite
     ├── test-health.sh
     ├── verify-env.sh
     ├── backup-baileys.sh
-    ├── restore-baileys.sh
-    ├── migrate-n8n.sh
-    └── rollback-n8n.sh
+    └── restore-baileys.sh
 ```
 
 ---

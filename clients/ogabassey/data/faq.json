@@ -1,0 +1,98 @@
+{
+  "tenant": "ogabassey",
+  "updated_at": "2026-11-22",
+  "source_urls": [
+    "https://ogabassey.com/faq",
+    "https://ogabassey.com/shipping",
+    "https://ogabassey.com/warranty",
+    "https://ogabassey.com/returns",
+    "https://ogabassey.com/swap",
+    "https://ogabassey.com/contact"
+  ],
+  "store": {
+    "name": "OgaBassey Official Store",
+    "tagline": "Making Smartphones Accessible and Affordable",
+    "address": "2 Olaide Tomori Street, Ikeja, Lagos, 100001",
+    "phone": "+2348146978921",
+    "email": "basseybjohn@yahoo.co.uk",
+    "hours": "Monday to Saturday, 9am to 6pm",
+    "closed_days": "Sundays and public holidays",
+    "map_link": "https://www.google.com/maps/search/?api=1&query=2%20Olaide%20Tomori%20Street%2C%20Ikeja%2C%20Lagos%2C%20100001",
+    "support_hours": "Mon–Sat, 9am–6pm",
+    "website": "https://ogabassey.com",
+    "instagram": "https://instagram.com/ogabasseyy",
+    "social_note": "DMs on Instagram are monitored but response is faster via WhatsApp or phone."
+  },
+  "shipping": {
+    "courier": "GIG Logistics",
+    "regions": "Nigeria (all states)",
+    "handling_days": "0 to 2 business days",
+    "transit_days": "1 to 7 business days",
+    "fee_note": "Shipping is not free. Delivery fee is calculated at checkout based on destination.",
+    "total_estimate": "1 to 9 business days from order to delivery",
+    "note": "Timing depends on stock status, payment confirmation, destination city, and courier availability. Inspect the package at delivery before accepting it for high-value orders."
+  },
+  "warranty": {
+    "new_devices": "Manufacturer warranty applies. Term and coverage depend on manufacturer and model.",
+    "used_and_open_box_devices": "1 year OgaBassey store warranty on eligible pre-owned and open-box devices.",
+    "covered_faults": "Device stops turning on, camera stops working, and other electronic defects not caused by user.",
+    "exclusions": "Screen damage, physical damage, liquid damage, and power surge damage are excluded.",
+    "assurance_product": "OgaBassey Assurance adds screen and liquid damage protection for up to 1 year. Available at checkout for eligible devices.",
+    "how_to_claim": "Contact support via WhatsApp or phone to start a warranty claim. Have your order number ready."
+  },
+  "returns": {
+    "window_days": 14,
+    "policy": "Report an undisclosed technical defect within 14 days of delivery.",
+    "remedy": "OgaBassey will complete a repair or replacement within the 14-day period for eligible faults.",
+    "exclusions": "Physical damage, liquid damage, and power surge damage are excluded.",
+    "pre_return_step": "Contact support before sending anything back so they can confirm the return process.",
+    "return_shipping": {
+      "approved_fault": "OgaBassey pays return shipping for approved fault returns.",
+      "change_of_mind": "Customer pays return shipping for change-of-mind buybacks."
+    },
+    "buyback": "If you change your mind and the device has no fault, ask support about a buyback. Buyback price is the original device value minus 15 to 20 percent.",
+    "consumer_rights": "Your rights under Nigerian consumer law still apply."
+  },
+  "swap": {
+    "eligible_devices": [
+      "iPhones (iPhone 11 and newer)",
+      "Samsung Galaxy S Series",
+      "MacBooks (2018 and newer)",
+      "PlayStation 4 and PlayStation 5",
+      "iPads"
+    ],
+    "how_it_works": [
+      "1. Take photos or a short 10-second video showing device screen and body.",
+      "2. AI grades your device condition automatically.",
+      "3. Accept the offer and swap instantly — or visit the store for a physical inspection."
+    ],
+    "final_offer_factors": "Model, storage size, screen condition, battery health, camera condition, accessories, repair history, and whether the device powers on normally.",
+    "preparation_checklist": [
+      "Back up your data before submission.",
+      "Remove your personal accounts where possible (iCloud, Google account, Samsung account).",
+      "Clean the device.",
+      "Keep the charger, receipt, or box available if you have them."
+    ],
+    "note": "The bot collects your device details and shows the catalog price of your desired upgrade. The final trade-in credit is confirmed by the sales team after physical inspection. Visit the store or a rep will follow up with you."
+  },
+  "payments": {
+    "processor": "Paystack",
+    "accepted_methods": "Card payments via Paystack checkout on ogabassey.com",
+    "installment_note": "Contact support to ask about installment or payment plan options. Not available for all products.",
+    "currency": "Nigerian Naira (₦)"
+  },
+  "imei_check": {
+    "url": "https://ogabassey.com/imei-check",
+    "description": "Check if a device is blacklisted, carrier-locked, or has an active iCloud/Google lock before buying."
+  },
+  "repairs": {
+    "url": "https://ogabassey.com/repairs",
+    "description": "OgaBassey offers device repair services. Contact support or visit the store to book a repair."
+  },
+  "quick_replies": {
+    "price_check": "Send the device name (e.g. iPhone 16 Pro) and we will send you the current price.",
+    "swap": "Type *swap* to start the trade-in process.",
+    "store": "📍 2 Olaide Tomori Street, Ikeja, Lagos. Open Mon–Sat 9am–6pm. Call +2348146978921.",
+    "track_order": "Visit https://ogabassey.com/track-order and enter your order number."
+  }
+}

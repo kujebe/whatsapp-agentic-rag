@@ -1,0 +1,10 @@
+{
+  "tenantId": "template",
+  "brandName": "Your Brand",
+  "supportPhone": "+2340000000000",
+  "businessHours": "Monday to Friday, 9am to 5pm",
+  "salesRepJid": "2340000000000@s.whatsapp.net",
+  "websiteUrl": "https://example.com",
+  "currencySymbol": "₦",
+  "currencyCode": "NGN"
+}

@@ -239,6 +239,17 @@ async function connectToWhatsApp() {
         msg.message?.extendedTextMessage?.text ||
         '';
 
+      // Extract quoted message context if available
+      const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+      const quotedMessage = contextInfo?.quotedMessage;
+      const quotedText =
+        quotedMessage?.conversation ||
+        quotedMessage?.extendedTextMessage?.text ||
+        quotedMessage?.imageMessage?.caption ||
+        quotedMessage?.videoMessage?.caption ||
+        null;
+      const quotedParticipant = contextInfo?.participant || null;
+
       // Ignore empty messages that contain no text and no media
       if (!textContent.trim() && !media) continue;
 
@@ -248,6 +259,8 @@ async function connectToWhatsApp() {
         pushName: msg.pushName || 'Unknown',
         text: textContent,
         media,
+        quotedText,
+        quotedParticipant,
         rawEvent: msg,
       });
     }

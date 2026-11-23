@@ -1,0 +1,11 @@
+{
+  "products": [
+    {
+      "name": "Sample Product",
+      "price": 10000,
+      "brand": "SampleBrand",
+      "category": "Accessories",
+      "availability": "available"
+    }
+  ]
+}

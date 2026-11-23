@@ -27,7 +27,7 @@ class DebounceManager {
   /**
    * Buffer an inbound message item and manage the trailing-edge timer.
    */
-  async addMessage({ senderJid, pushName, text, media, rawEvent }) {
+  async addMessage({ senderJid, pushName, text, media, quotedText, quotedParticipant, rawEvent }) {
     const bufferKey = this.getBufferKey(senderJid);
     const timerKey = this.getTimerKey(senderJid);
 
@@ -38,6 +38,8 @@ class DebounceManager {
       hasMedia: Boolean(media && media.hasMedia),
       media: media || null,
       pushName: pushName || 'Unknown',
+      quotedText: quotedText || null,
+      quotedParticipant: quotedParticipant || null,
     };
 
     try {
@@ -124,6 +126,12 @@ class DebounceManager {
       const stitchedText = textParts.join('\n');
       const senderPhone = senderJid.replace(/[^0-9]/g, '');
 
+      // Extract quoted context from the batch if any message replied to a quote
+      const quotedItem = parsedItems.find((it) => it.quotedText);
+      const quotedContext = quotedItem
+        ? { quotedText: quotedItem.quotedText, quotedParticipant: quotedItem.quotedParticipant }
+        : null;
+
       const aggregatedPayload = {
         event: 'messages.aggregated',
         tenantId: this.tenantId,
@@ -132,6 +140,8 @@ class DebounceManager {
         pushName: parsedItems[0]?.pushName || 'Unknown',
         messageCount: parsedItems.length,
         stitchedText: stitchedText,
+        quotedContext: quotedContext,
+        quotedText: quotedContext ? quotedContext.quotedText : null,
         hasMedia: mediaItems.length > 0,
         mediaItems: mediaItems,
         rawEvents: parsedItems,

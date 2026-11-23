@@ -2,7 +2,9 @@
 set -euo pipefail
 
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
+  set -a
+  source .env
+  set +a
 fi
 
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-whatsapp}"

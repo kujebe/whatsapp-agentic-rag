@@ -96,10 +96,28 @@ services:
       - EXECUTIONS_DATA_PRUNE_MAX_COUNT=50000
       - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
       - EXECUTIONS_DATA_SAVE_ON_ERROR=all
-      - DB_SQLITE_VACUUM_ON_STARTUP=true
+      - DB_SQLITE_VACUUM_ON_STARTUP=false
+      - DB_SQLITE_BUSY_TIMEOUT=10000
+      - NODE_FUNCTION_ALLOW_BUILTIN=fs,path,crypto
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_RUNNERS_GRANT_TOKEN_TTL=120
+      - N8N_RUNNERS_TASK_REQUEST_TIMEOUT=60
+      - N8N_RUNNERS_TASK_TIMEOUT=120
+      - TENANT_ID=${TENANT_ID:-default}
+      - TENANT_CATALOG_PATH=/data/clients/${TENANT_ID:-default}/data/catalog.json
+      - TENANT_FAQ_PATH=/data/clients/${TENANT_ID:-default}/data/faq.json
+      - TENANT_CONFIG_PATH=/data/clients/${TENANT_ID:-default}/data/config.json
+      - SALES_REP_JID=${SALES_REP_JID:-}
+      - EOD_CRON_WAT=${EOD_CRON_WAT:-0 19 * * 1-6}
+      - LLM_BASE_URL=
+      - LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
+      - LLM_API_KEY=
+      - MODAL_VISION_URL=
+      - MODAL_WHISPER_URL=
     volumes:
       - n8n_data:${N8N_DIR:-/home/node}/.n8n
       - whatsapp_media:/data/media
+      - ./clients:/data/clients:ro
     ports:
       - "${N8N_HOST_PORT:-5678}:5678"
     networks:
@@ -134,5 +152,4 @@ volumes:
   whatsapp_media:
     name: ${COMPOSE_PROJECT_NAME:-whatsapp}_media
   n8n_data:
-    name: ${N8N_EXISTING_VOLUME:-n8n_data}
-    external: true
+    name: ${N8N_EXISTING_VOLUME:-${COMPOSE_PROJECT_NAME:-whatsapp}_n8n_data}
